@@ -2,6 +2,7 @@ import re
 from datetime import date
 from typing import Literal,Optional
 from pydantic import BaseModel,Field,field_validator,model_validator,ValidationInfo
+from src.constants.enums import STATIONS
 from src.utils.time import aware
 class Login(BaseModel):email:str;password:str
 class ArrivalInput(BaseModel):
@@ -38,3 +39,12 @@ class PreviewInput(BaseModel):
  report_day:date
  station:Literal['全部','北站','南站','东港']='全部'
 class ReviewInput(BaseModel):note:str=Field(min_length=5,max_length=2000)
+class DisclosureInput(BaseModel):
+ report_day:date
+ stations:list[Literal['北站','南站','东港']]=Field(min_length=1,max_length=3)
+ note:str=Field(default='',max_length=500)
+ @field_validator('stations')
+ @classmethod
+ def unique(cls,v):
+  if len(set(v))!=len(v):raise ValueError('港站组合不能重复')
+  return [s for s in STATIONS if s in v]

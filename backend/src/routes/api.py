@@ -1,14 +1,15 @@
 from fastapi import APIRouter,Depends,HTTPException
 from src.config.database import db
-from src.models.entities import User,Subscription,Receipt,Audit
-from src.schemas.business import Login,ArrivalInput,SubscriptionInput,PreviewInput,ReviewInput
+from src.models.entities import User,Subscription,Receipt,Audit,DisclosureApplication,Disclosure
+from src.schemas.business import Login,ArrivalInput,SubscriptionInput,PreviewInput,ReviewInput,DisclosureInput
 from src.middlewares.auth import current,editor,admin
 from src.utils.security import verify,token
 from src.utils.time import now_utc,yesterday,SH
 from src.services.business import audit,dump
 from src.services.repository import arrival_rows,save_arrival,save_subscription,get_receipt
 from src.services.digest import calculate
-from src.controllers.business import export_receipt
+from src.services import disclosure as disclosure_service
+from src.controllers.business import export_receipt,export_disclosure
 router=APIRouter()
 @router.post('/auth/login')
 def login(data:Login,s=Depends(db)):
@@ -48,5 +49,49 @@ def review(i:int,data:ReviewInput,u=Depends(admin),s=Depends(db)):
  r=get_receipt(s,i)
  if r.state=='reviewed':raise HTTPException(409,'回执已复核，不覆盖原复核意见')
  r.state='reviewed';r.review_note=data.note;s.commit();audit(s,u,'复核晨报回执 '+str(i));return dump(r)
+
+# 内部公开申请：待核算 -> 已公开/已拒绝；判定与公开记录同事务生效。
+def _application_view(s,app):
+ v=dump(app);v['stations']=list(app.stations);v['note']=app.request_note;v['basis']=app.basis
+ v['conflict_count']=len((app.basis or {}).get('conflicts',[]))
+ v['disclosure']=disclosure_service.public_view(s.get(Disclosure,app.disclosure_id)) if app.disclosure_id else None
+ return v
+@router.get('/disclosure-applications')
+def disclosure_applications(u=Depends(current),s=Depends(db)):
+ return [_application_view(s,a) for a in s.query(DisclosureApplication).order_by(DisclosureApplication.id.desc()).all()]
+@router.post('/disclosure-applications')
+def create_disclosure_application(data:DisclosureInput,u=Depends(editor),s=Depends(db)):
+ try:stations,key=disclosure_service.canonical_stations(data.stations)
+ except ValueError as exc:raise HTTPException(422,str(exc))
+ app=DisclosureApplication(report_day=data.report_day.isoformat(),station=key,stations=stations,requested_by=u.email,request_note=data.note,created_at=now_utc().isoformat(),state='pending')
+ s.add(app);s.flush()
+ s.add(Audit(actor=u.email,action='提交公开申请 #%s / %s %s'%(app.id,app.report_day,key),created=now_utc().isoformat()))
+ s.commit();return _application_view(s,app)
+@router.get('/disclosure-applications/{i}')
+def disclosure_application(i:int,u=Depends(current),s=Depends(db)):
+ app=s.get(DisclosureApplication,i)
+ if not app:raise HTTPException(404,'公开申请不存在')
+ return _application_view(s,app)
+@router.post('/disclosure-applications/{i}/retry')
+def retry_disclosure_application(i:int,u=Depends(admin),s=Depends(db)):
+ app=s.get(DisclosureApplication,i)
+ if not app:raise HTTPException(404,'公开申请不存在')
+ if app.state!='pending':raise HTTPException(409,'申请已判定（%s），不重新核算'%app.state)
+ try:app=disclosure_service.decide(s,i,u.email)
+ except Exception:
+  s.rollback();raise HTTPException(503,'核算中断，申请保持待核算，可重试')
+ return _application_view(s,app)
+
+# 对外公开查询：只含聚合值、口径与校验；不含班次、任何时间或备注。
+@router.get('/public/disclosures')
+def public_disclosures(u=Depends(current),s=Depends(db)):
+ return [disclosure_service.public_view(d) for d in s.query(Disclosure).order_by(Disclosure.id.desc()).all()]
+@router.get('/public/disclosures/{i}')
+def public_disclosure(i:int,u=Depends(current),s=Depends(db)):
+ d=s.get(Disclosure,i)
+ if not d:raise HTTPException(404,'公开记录不存在')
+ return disclosure_service.public_view(d)
+@router.get('/public/disclosures/{i}/export')
+def public_disclosure_export(i:int,u=Depends(current),s=Depends(db)):return export_disclosure(s,i)
 @router.get('/audits')
 def audits(u=Depends(admin),s=Depends(db)):return [dump(r) for r in s.query(Audit).order_by(Audit.id.desc()).limit(100)]

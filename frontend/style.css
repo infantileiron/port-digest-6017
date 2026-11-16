@@ -5,3 +5,5 @@
 .split>*{min-width:0}.scroll{max-width:100%}header{gap:16px;flex-wrap:wrap}header>div{min-width:0;max-width:100%;overflow-wrap:anywhere}@media(max-width:1000px){.split{grid-template-columns:minmax(0,1fr)}}@media(max-width:767px){header .brand{width:100%}.intro h1{font-size:30px}nav{max-width:100%}nav button{flex-shrink:0}}
 
 header{background:oklch(25% .035 245);color:oklch(94% .016 235)}header button{color:inherit}header .eyebrow{color:oklch(78% .08 65)}nav .active{border-left-color:var(--accent)}.login .cover{background:oklch(25% .035 245)}.metrics strong{font-size:clamp(24px,2.2vw,34px)}
+
+.check{display:flex;align-items:center;gap:8px;grid-template-columns:none}.check input{width:auto;margin:0}.side h3{font-size:17px;margin-top:22px}

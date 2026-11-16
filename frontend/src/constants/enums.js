@@ -1,1 +1,1 @@
-export const STATIONS=['北站','南站','东港'];export const ROLES=['admin','analyst','viewer'];export const RECEIPT_STATES=['delivered','reviewed'];export const TIMEZONE='Asia/Shanghai';
+export const STATIONS=['北站','南站','东港'];export const ROLES=['admin','analyst','viewer'];export const RECEIPT_STATES=['delivered','reviewed'];export const DISCLOSURE_STATES=['pending','published','rejected'];export const DISCLOSURE_MIN_GROUP=5;export const TIMEZONE='Asia/Shanghai';
